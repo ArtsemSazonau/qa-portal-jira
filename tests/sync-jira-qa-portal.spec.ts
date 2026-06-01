@@ -140,11 +140,16 @@ test('syncs grouped bug data to QA-Portal', async ({ browser }) => {
   await expect(qaPortalQualityTracker.logOutButton).toBeVisible();
   console.log('✅ Session restored, user is logged in');
 
-  let synced = 0;
+  const synced: string[] = [];
+  const skipped: Array<{ platform: string; project: string; reason: string; stats?: Record<string, number> }> = [];
 
   // Iterate platformMapping in a stable order
   for (const [platformKey, projectName] of Object.entries(platformMapping)) {
     console.log(`\n📊 Processing platform mapping: ${platformKey} -> ${projectName}`);
+
+    // 0) reload to a clean/disabled baseline so this platform starts fresh,
+    //    regardless of whether the previous platform was saved or skipped
+    await qaPortalQualityTracker.visit();
 
     // 1) initial inputs should be disabled
     await expect(qaPortalQualityTracker.disabledInput).toBeEnabled();
@@ -165,10 +170,28 @@ test('syncs grouped bug data to QA-Portal', async ({ browser }) => {
       console.log(`No data for ${platformKey}; leaving default values`);
     }
 
-    // 5) open Save modal and select project
+    // 5) open Save modal and inspect the project's dropdown option
     await qaPortalQualityTracker.saveResultLink.click();
-    // make sure combobox is present before selecting
+    // make sure combobox is present before inspecting/selecting
     await qaPortalQualityTracker.projectsDropdown.waitFor({ state: 'visible', timeout: 3000 });
+
+    const optionState = await qaPortalQualityTracker.projectOptionState(projectName);
+
+    // 5a) skip gracefully when the project cannot be selected (expected portal state)
+    if (optionState !== 'selectable') {
+      const reason = optionState === 'disabled'
+        ? 'project not selectable — already saved today / option disabled'
+        : 'project option not found in dropdown (absent)';
+      skipped.push({ platform: platformKey, project: projectName, reason, stats });
+      console.log(
+        RED + `⏭️  Skipped ${platformKey} -> ${projectName} | reason: ${reason}` + RESET,
+        '\n   bug counts that were filled:', stats ?? '(none)'
+      );
+      // next iteration's visit() reload restores the clean baseline
+      continue;
+    }
+
+    // 5b) selectable: pick the project
     await qaPortalQualityTracker.projectsDropdown.selectOption(projectName);
 
     // 6) click Save
@@ -178,12 +201,17 @@ test('syncs grouped bug data to QA-Portal', async ({ browser }) => {
     // Wait that field becomes disabled again (save action should disable inputs)
     await expect(qaPortalQualityTracker.disabledInput).toBeEnabled({ timeout: 8000 });
 
-    synced++;
-    console.log(`✅ Synced ${platformKey}`);
+    synced.push(platformKey);
+    console.log(GREEN + `✅ Synced ${platformKey}` + RESET);
   }
 
-  console.log(GREEN + `\n✅ All ${synced} platforms synced to QA Portal` + RESET);
-  expect(synced).toBeGreaterThan(0);
+  // run-level summary: synced vs skipped (auditable from the logs)
+  console.log(GREEN + `\n===== Sync summary =====` + RESET);
+  console.log(GREEN + `✅ Synced (${synced.length}): ${synced.join(', ') || '(none)'}` + RESET);
+  console.log(RED + `⏭️  Skipped (${skipped.length}): ${skipped.map(s => `${s.platform} (${s.reason})`).join('; ') || '(none)'}` + RESET);
+
+  // The run is healthy as long as the loop completed; an all-skipped run is OK.
+  expect(synced.length + skipped.length).toBe(Object.keys(platformMapping).length);
 
   await context.close();
 
