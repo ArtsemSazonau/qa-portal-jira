@@ -5,9 +5,26 @@ export class JiraClient {
   private client: AxiosInstance;
 
   constructor() {
-    const baseURL = (process.env.JIRA_BASE_URL! || '').replace(/\/+$/, '');
-    const token = process.env.JIRA_API_TOKEN!;
-    const email = process.env.JIRA_EMAIL!;
+    const token = process.env.JIRA_API_TOKEN;
+    const email = process.env.JIRA_EMAIL;
+    const cloudId = process.env.JIRA_CLOUD_ID;
+
+    // Scoped (granular) API tokens are only honored by the Atlassian API gateway, not the
+    // site URL. We always route through the gateway, which works for classic tokens too.
+    // Fail fast with a clear message instead of surfacing an opaque 401 later.
+    const missing = [
+      !email && 'JIRA_EMAIL',
+      !token && 'JIRA_API_TOKEN',
+      !cloudId && 'JIRA_CLOUD_ID',
+    ].filter(Boolean);
+    if (missing.length) {
+      throw new Error(
+        `Missing required Jira env var(s): ${missing.join(', ')}. ` +
+          `JIRA_CLOUD_ID is your site's cloudId (find it at https://<your-site>.atlassian.net/_edge/tenant_info).`
+      );
+    }
+
+    const baseURL = `https://api.atlassian.com/ex/jira/${cloudId}`.replace(/\/+$/, '');
     const auth = Buffer.from(`${email}:${token}`).toString('base64');
 
 
