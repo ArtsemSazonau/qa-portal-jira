@@ -53,6 +53,31 @@ export class QAPortalQualityTracker {
         await this.page.waitForLoadState('networkidle');
     };
 
+    projectOptionState = async (
+        projectName: string,
+        timeout = 5000
+    ): Promise<'selectable' | 'disabled' | 'absent'> => {
+        // The dropdown can be "visible" before its <option>s finish populating, so
+        // poll (exact match — keeps "Android" distinct from "Android TV") until the
+        // option appears or we time out; only then treat it as genuinely absent.
+        const check = async (): Promise<'selectable' | 'disabled' | 'absent'> =>
+            (await this.projectsDropdown.evaluate((select: HTMLSelectElement, name) => {
+                const opt = Array.from(select.options).find(
+                    o => o.label === name || o.value === name || (o.textContent ?? '').trim() === name
+                );
+                if (!opt) return 'absent';
+                return opt.disabled ? 'disabled' : 'selectable';
+            }, projectName)) as 'selectable' | 'disabled' | 'absent';
+
+        const deadline = Date.now() + timeout;
+        let state = await check();
+        while (state === 'absent' && Date.now() < deadline) {
+            await this.page.waitForTimeout(200);
+            state = await check();
+        }
+        return state;
+    };
+
     selectProjectByPlatform = async (platform: string): Promise<boolean> => {
         const projectName = platformMapping[platform];
         if (!projectName) {
