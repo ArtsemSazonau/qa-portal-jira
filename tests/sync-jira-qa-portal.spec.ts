@@ -75,8 +75,8 @@ test('counts bugs grouped by platform', async () => {
 
   // iterate issues and accumulate counts
   for (const issue of allIssues) {
-    const priName: string = issue?.fields?.priority?.name ?? 'Unknown';
-    let platformsField: any = issue?.fields?.customfield_10119;
+    const priName: string = issue?.fields?.[jiraData.customFields.priority]?.name ?? 'Unknown';
+    let platformsField: any = issue?.fields?.[jiraData.customFields.platform];
 
     if (!platformsField) {
       // if platform not present, count under "Unknown"
