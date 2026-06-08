@@ -1,5 +1,5 @@
 export const jiraData = {
-    allBugsFilter: '11291',
+    allBugsFilter: '10147',
     customFields: {
         platform: 'customfield_10622',
         priority: 'priority'
